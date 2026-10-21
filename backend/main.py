@@ -11,41 +11,42 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 
-# Model paths: environment variables for deployment,
-# local paths as defaults for development.
-LOCAL_BASE_DIR = Path(r"C:\Users\KARAM\Desktop\ai")
+# ==========================================
+# 1. Model paths
+# ==========================================
+
+BASE_DIR = Path(__file__).resolve().parent
 
 MODEL_PATH = Path(
     os.getenv(
         "SIGNBRIDGE_MODEL_PATH",
-        str(
-            LOCAL_BASE_DIR
-            / "signbridge_output"
-            / "signbridge_32_classes.keras"
-        ),
+        str(BASE_DIR / "model" / "signbridge_32_classes.keras"),
     )
 )
 
 CLASSES_PATH = Path(
     os.getenv(
         "SIGNBRIDGE_CLASSES_PATH",
-        str(
-            LOCAL_BASE_DIR
-            / "signbridge_output"
-            / "class_names.json"
-        ),
+        str(BASE_DIR / "model" / "class_names.json"),
     )
 )
 
 
+# ==========================================
+# 2. FastAPI application
+# ==========================================
+
 app = FastAPI(
     title="SignBridge AI API",
-    description="Arabic sign image classification API",
+    description="Arabic Sign Language Image Classification API",
     version="1.0.0",
 )
 
 
-# Keep local development origins and allow configured production URL.
+# ==========================================
+# 3. CORS configuration
+# ==========================================
+
 frontend_url = os.getenv("FRONTEND_URL", "").strip().rstrip("/")
 
 allowed_origins = [
@@ -65,7 +66,10 @@ app.add_middleware(
 )
 
 
-# Load the model and class names.
+# ==========================================
+# 4. Load model and class names
+# ==========================================
+
 if not MODEL_PATH.is_file():
     raise FileNotFoundError(
         f"Model file not found: {MODEL_PATH}"
@@ -83,6 +87,11 @@ model = tf.keras.models.load_model(MODEL_PATH)
 with CLASSES_PATH.open("r", encoding="utf-8") as file:
     classes = json.load(file)
 
+if not isinstance(classes, list):
+    raise RuntimeError(
+        "Class names file must contain a JSON list"
+    )
+
 if len(classes) != model.output_shape[-1]:
     raise RuntimeError(
         "Model output count does not match class names"
@@ -91,6 +100,10 @@ if len(classes) != model.output_shape[-1]:
 print("Model loaded successfully!")
 print(f"Number of classes: {len(classes)}")
 
+
+# ==========================================
+# 5. Home endpoint
+# ==========================================
 
 @app.get("/")
 def home():
@@ -101,6 +114,10 @@ def home():
     }
 
 
+# ==========================================
+# 6. Health check endpoint
+# ==========================================
+
 @app.get("/health")
 def health():
     return {
@@ -110,6 +127,10 @@ def health():
     }
 
 
+# ==========================================
+# 7. Get available classes
+# ==========================================
+
 @app.get("/classes")
 def get_classes():
     return {
@@ -118,8 +139,13 @@ def get_classes():
     }
 
 
+# ==========================================
+# 8. Predict sign from uploaded image
+# ==========================================
+
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
+
     allowed_types = {
         "image/jpeg",
         "image/png",
